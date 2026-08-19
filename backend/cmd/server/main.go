@@ -9,6 +9,7 @@ import (
 	"syscall"
 	"time"
 
+	"roomly/internal/ai"
 	"roomly/internal/api"
 	rdb "roomly/internal/redis"
 	"roomly/internal/room"
@@ -26,12 +27,22 @@ func getEnv(key, fallback string) string {
 func main() {
 	port := ":" + getEnv("PORT", "8080")
 	redisAddr := getEnv("REDIS_URL", "localhost:6379")
+	frontendURL := getEnv("FRONTEND_URL", "http://localhost:5173")
+	mistralKey := getEnv("MISTRAL_API_KEY", "")
 
 	redisClient := rdb.NewClient(redisAddr)
-	manager := room.NewManager(redisClient)
+
+	aiClient := ai.NewClient(mistralKey)
+	if aiClient.Enabled() {
+		log.Println("Mistral AI enabled")
+	} else {
+		log.Println("Mistral AI disabled (set MISTRAL_API_KEY to enable)")
+	}
+
+	manager := room.NewManager(redisClient, aiClient)
 
 	router := gin.Default()
-	api.RegisterRoutes(router, redisClient, manager)
+	api.RegisterRoutes(router, redisClient, manager, frontendURL)
 
 	srv := &http.Server{
 		Addr:    port,

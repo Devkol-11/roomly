@@ -10,8 +10,8 @@ import (
 	goredis "github.com/redis/go-redis/v9"
 )
 
-func RegisterRoutes(r *gin.Engine, client *goredis.Client, manager *room.Manager) {
-	h := NewHandler(client, manager)
+func RegisterRoutes(r *gin.Engine, client *goredis.Client, manager *room.Manager, frontendURL string) {
+	h := NewHandler(client, manager, frontendURL)
 	wsHandler := ws.NewHandler(client, manager)
 
 	r.GET("/health", func(c *gin.Context) {

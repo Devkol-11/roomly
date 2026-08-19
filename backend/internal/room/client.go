@@ -20,12 +20,16 @@ type Client struct {
 	ID          string
 	DisplayName string
 	RoomID      string
+	Language    string // BCP-47 tag or plain name, e.g. "en", "French". Empty = no translation.
 	hub         *Hub
 	conn        *websocket.Conn
 	send        chan []byte
 }
 
-func NewClient(displayName, roomID, participantID string, hub *Hub, conn *websocket.Conn) (*Client, error) {
+// NewClient creates a Client. participantID is optional — pass the creator_id to
+// keep creator privileges across reconnects. language is the preferred language
+// for AI translation (empty disables translation for this client).
+func NewClient(displayName, roomID, participantID, language string, hub *Hub, conn *websocket.Conn) (*Client, error) {
 	id := participantID
 	if id == "" {
 		var err error
@@ -38,6 +42,7 @@ func NewClient(displayName, roomID, participantID string, hub *Hub, conn *websoc
 		ID:          id,
 		DisplayName: displayName,
 		RoomID:      roomID,
+		Language:    language,
 		hub:         hub,
 		conn:        conn,
 		send:        make(chan []byte, 256),
@@ -136,6 +141,20 @@ func (c *Client) handleMessage(raw []byte) {
 		c.handleLockRoom()
 	case "kick_member":
 		c.handleKickMember(event.Payload)
+	// Focus mode
+	case "focus_mode_on":
+		c.handleFocusModeOn()
+	case "focus_mode_off":
+		c.handleFocusModeOff()
+	case "floor_request":
+		c.handleFloorRequest()
+	case "floor_release":
+		c.handleFloorRelease()
+	case "grant_floor":
+		c.handleGrantFloor(event.Payload)
+	// AI summary
+	case "request_summary":
+		c.handleSummaryRequest()
 	default:
 		c.sendError("unknown event type: " + event.Type)
 	}
@@ -154,14 +173,23 @@ func (c *Client) handleChat(payload json.RawMessage) {
 		return
 	}
 
+	// Enforce focus mode: only the floor holder may speak.
+	if c.hub.IsFocusActive() && !c.hub.IsFloorHolder(c.ID) {
+		c.sendError("focus mode is active — request the floor first")
+		return
+	}
+
 	msgID, _ := generateClientID()
-	c.hub.broadcast <- mustEvent(EventMessage, MessagePayload{
+	msg := MessagePayload{
 		ID:         msgID[:8],
 		SenderID:   c.ID,
 		SenderName: c.DisplayName,
 		Text:       body.Text,
 		Timestamp:  time.Now(),
-	})
+	}
+
+	// broadcastMessage handles per-language translation and message storage.
+	c.hub.broadcastMessage(c, msg)
 }
 
 func (c *Client) handlePollCreate(payload json.RawMessage) {
@@ -234,7 +262,6 @@ func (c *Client) handlePollVote(payload json.RawMessage) {
 func (c *Client) handleLockRoom() {
 	if err := c.hub.LockRoomWS(c.ID); err != nil {
 		c.sendError(err.Error())
-		return
 	}
 }
 
@@ -248,7 +275,53 @@ func (c *Client) handleKickMember(payload json.RawMessage) {
 	}
 	if err := c.hub.KickClient(c.ID, body.ParticipantID); err != nil {
 		c.sendError(err.Error())
+	}
+}
+
+// ─── Focus mode handlers ──────────────────────────────────────────────────────
+
+func (c *Client) handleFocusModeOn() {
+	if err := c.hub.EnableFocusMode(c.ID, c.DisplayName); err != nil {
+		c.sendError(err.Error())
+	}
+}
+
+func (c *Client) handleFocusModeOff() {
+	if err := c.hub.DisableFocusMode(c.ID); err != nil {
+		c.sendError(err.Error())
+	}
+}
+
+func (c *Client) handleFloorRequest() {
+	if err := c.hub.RequestFloor(c); err != nil {
+		c.sendError(err.Error())
+	}
+}
+
+func (c *Client) handleFloorRelease() {
+	if err := c.hub.ReleaseFloor(c.ID, c.DisplayName); err != nil {
+		c.sendError(err.Error())
+	}
+}
+
+func (c *Client) handleGrantFloor(payload json.RawMessage) {
+	var body struct {
+		ParticipantID string `json:"participant_id"`
+	}
+	if err := json.Unmarshal(payload, &body); err != nil || body.ParticipantID == "" {
+		c.sendError("participant_id is required")
 		return
+	}
+	if err := c.hub.GrantFloor(c.ID, body.ParticipantID); err != nil {
+		c.sendError(err.Error())
+	}
+}
+
+// ─── AI summary handler ───────────────────────────────────────────────────────
+
+func (c *Client) handleSummaryRequest() {
+	if err := c.hub.RequestSummary(c.ID); err != nil {
+		c.sendError(err.Error())
 	}
 }
 

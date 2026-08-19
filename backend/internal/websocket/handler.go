@@ -31,7 +31,8 @@ func NewHandler(redis *goredis.Client, manager *room.Manager) *Handler {
 func (h *Handler) ServeWS(c *gin.Context) {
 	roomID := c.Param("id")
 	displayName := c.Query("display_name")
-	participantID := c.Query("participant_id") // optional; pass creator_id to get creator privileges
+	participantID := c.Query("participant_id") // pass creator_id to get creator privileges
+	language := c.Query("lang")                // BCP-47 tag or plain name, e.g. "en", "French"
 
 	if len(displayName) < 2 || len(displayName) > 20 {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "display_name must be 2-20 characters"})
@@ -50,7 +51,6 @@ func (h *Handler) ServeWS(c *gin.Context) {
 		return
 	}
 	if r.Status == "locked" {
-		// Allow the creator to reconnect to a locked room
 		if participantID != r.CreatorID {
 			c.JSON(http.StatusForbidden, gin.H{"error": "room is locked"})
 			return
@@ -65,7 +65,7 @@ func (h *Handler) ServeWS(c *gin.Context) {
 
 	hub := h.manager.GetOrCreateHub(roomID, r.CreatorID)
 
-	client, err := room.NewClient(displayName, roomID, participantID, hub, conn)
+	client, err := room.NewClient(displayName, roomID, participantID, language, hub, conn)
 	if err != nil {
 		conn.Close()
 		return

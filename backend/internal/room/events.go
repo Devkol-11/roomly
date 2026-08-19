@@ -17,6 +17,15 @@ const (
 	EventPollUpdate  = "poll_updated"
 	EventKicked      = "kicked"
 	EventError       = "error"
+
+	// Focus mode — talking-stick feature
+	EventFocusModeEnabled  = "focus_mode_enabled"
+	EventFocusModeDisabled = "focus_mode_disabled"
+	EventFloorGranted      = "floor_granted"
+	EventFloorReleased     = "floor_released"
+
+	// AI summary
+	EventRoomSummary = "room_summary"
 )
 
 type Event struct {
@@ -24,12 +33,16 @@ type Event struct {
 	Payload json.RawMessage `json:"payload"`
 }
 
+// MessagePayload carries a single chat message.
+// OriginalText and TranslatedFrom are only set when live translation is active.
 type MessagePayload struct {
-	ID         string    `json:"id"`
-	SenderID   string    `json:"sender_id"`
-	SenderName string    `json:"sender_name"`
-	Text       string    `json:"text"`
-	Timestamp  time.Time `json:"timestamp"`
+	ID             string    `json:"id"`
+	SenderID       string    `json:"sender_id"`
+	SenderName     string    `json:"sender_name"`
+	Text           string    `json:"text"`
+	OriginalText   string    `json:"original_text,omitempty"`
+	TranslatedFrom string    `json:"translated_from,omitempty"`
+	Timestamp      time.Time `json:"timestamp"`
 }
 
 type UserPayload struct {
@@ -65,6 +78,28 @@ type PollVotePayload struct {
 type PollUpdatePayload struct {
 	PollID string         `json:"poll_id"`
 	Votes  map[string]int `json:"votes"`
+}
+
+// FocusModePayload is broadcast when focus mode is toggled.
+type FocusModePayload struct {
+	Enabled         bool   `json:"enabled"`
+	FloorHolderID   string `json:"floor_holder_id,omitempty"`
+	FloorHolderName string `json:"floor_holder_name,omitempty"`
+}
+
+// FloorPayload is broadcast when the floor changes hands.
+type FloorPayload struct {
+	ParticipantID string `json:"participant_id"`
+	DisplayName   string `json:"display_name"`
+}
+
+// SummaryPayload is the AI-generated room summary sent to all clients.
+type SummaryPayload struct {
+	TLDR         string   `json:"tldr"`
+	Decisions    []string `json:"decisions"`
+	ActionItems  []string `json:"action_items"`
+	Sentiment    string   `json:"sentiment"`
+	MessageCount int      `json:"message_count"`
 }
 
 func NewEvent(eventType string, payload any) ([]byte, error) {

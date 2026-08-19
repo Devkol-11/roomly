@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"crypto/rand"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"net/http"
@@ -13,15 +14,17 @@ import (
 
 	"github.com/gin-gonic/gin"
 	goredis "github.com/redis/go-redis/v9"
+	qrcode "github.com/skip2/go-qrcode"
 )
 
 type Handler struct {
-	redis   *goredis.Client
-	manager *room.Manager
+	redis       *goredis.Client
+	manager     *room.Manager
+	frontendURL string
 }
 
-func NewHandler(client *goredis.Client, manager *room.Manager) *Handler {
-	return &Handler{redis: client, manager: manager}
+func NewHandler(client *goredis.Client, manager *room.Manager, frontendURL string) *Handler {
+	return &Handler{redis: client, manager: manager, frontendURL: frontendURL}
 }
 
 const idCharset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
@@ -88,11 +91,20 @@ func (h *Handler) CreateRoom(c *gin.Context) {
 		return
 	}
 
+	joinURL := fmt.Sprintf("%s/rooms/%s", h.frontendURL, roomID)
+
+	// Generate QR code as a base64-encoded PNG (256×256).
+	var qrBase64 string
+	if png, err := qrcode.Encode(joinURL, qrcode.Medium, 256); err == nil {
+		qrBase64 = "data:image/png;base64," + base64.StdEncoding.EncodeToString(png)
+	}
+
 	respondCreated(c, gin.H{
 		"room_id":    roomID,
 		"creator_id": creatorID,
-		"link":       fmt.Sprintf("http://localhost:8080/rooms/%s", roomID),
+		"link":       joinURL,
 		"expires_at": r.ExpiresAt.Format(time.RFC3339),
+		"qr_code":    qrBase64,
 	})
 }
 
@@ -145,7 +157,6 @@ func (h *Handler) LockRoom(c *gin.Context) {
 		return
 	}
 
-	// Notify any connected WebSocket clients about the lock
 	data, _ := room.NewEvent(room.EventRoomLocked, map[string]string{"room_id": roomID})
 	h.manager.NotifyRoom(roomID, data)
 
