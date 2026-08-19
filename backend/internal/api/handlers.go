@@ -1,0 +1,156 @@
+package api
+
+import (
+	"context"
+	"crypto/rand"
+	"errors"
+	"fmt"
+	"net/http"
+	"time"
+
+	"roomly/internal/room"
+	rdb "roomly/internal/redis"
+
+	"github.com/gin-gonic/gin"
+	goredis "github.com/redis/go-redis/v9"
+)
+
+type Handler struct {
+	redis   *goredis.Client
+	manager *room.Manager
+}
+
+func NewHandler(client *goredis.Client, manager *room.Manager) *Handler {
+	return &Handler{redis: client, manager: manager}
+}
+
+const idCharset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+
+func generateID(n int) (string, error) {
+	b := make([]byte, n)
+	if _, err := rand.Read(b); err != nil {
+		return "", err
+	}
+	for i := range b {
+		b[i] = idCharset[b[i]%62]
+	}
+	return string(b), nil
+}
+
+var validDurations = map[int]bool{15: true, 30: true, 60: true, 120: true}
+
+func (h *Handler) CreateRoom(c *gin.Context) {
+	var body struct {
+		DurationMinutes int    `json:"duration_minutes"`
+		DisplayName     string `json:"display_name"`
+	}
+
+	if err := c.ShouldBindJSON(&body); err != nil {
+		respondError(c, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	if body.DurationMinutes == 0 {
+		body.DurationMinutes = 60
+	}
+	if !validDurations[body.DurationMinutes] {
+		respondError(c, http.StatusBadRequest, "duration must be 15, 30, 60, or 120 minutes")
+		return
+	}
+	if len(body.DisplayName) < 2 || len(body.DisplayName) > 20 {
+		respondError(c, http.StatusBadRequest, "display_name must be 2-20 characters")
+		return
+	}
+
+	roomID, err := generateID(8)
+	if err != nil {
+		respondError(c, http.StatusInternalServerError, "could not generate room ID")
+		return
+	}
+	creatorID, err := generateID(16)
+	if err != nil {
+		respondError(c, http.StatusInternalServerError, "could not generate participant ID")
+		return
+	}
+
+	now := time.Now()
+	r := &room.Room{
+		ID:        roomID,
+		Status:    "active",
+		CreatedAt: now,
+		ExpiresAt: now.Add(time.Duration(body.DurationMinutes) * time.Minute),
+		CreatorID: creatorID,
+		Duration:  body.DurationMinutes,
+	}
+
+	if err := rdb.SaveRoom(context.Background(), h.redis, r); err != nil {
+		respondError(c, http.StatusInternalServerError, "could not save room")
+		return
+	}
+
+	respondCreated(c, gin.H{
+		"room_id":    roomID,
+		"creator_id": creatorID,
+		"link":       fmt.Sprintf("http://localhost:8080/rooms/%s", roomID),
+		"expires_at": r.ExpiresAt.Format(time.RFC3339),
+	})
+}
+
+func (h *Handler) GetRoom(c *gin.Context) {
+	roomID := c.Param("id")
+
+	r, err := rdb.GetRoom(context.Background(), h.redis, roomID)
+	if err != nil {
+		respondError(c, http.StatusInternalServerError, "could not fetch room")
+		return
+	}
+	if r == nil {
+		respondError(c, http.StatusNotFound, "room not found or has expired")
+		return
+	}
+
+	respondOK(c, gin.H{
+		"id":                r.ID,
+		"status":            r.Status,
+		"created_at":        r.CreatedAt.Format(time.RFC3339),
+		"expires_at":        r.ExpiresAt.Format(time.RFC3339),
+		"locked":            r.Status == "locked",
+		"participant_count": 0,
+	})
+}
+
+func (h *Handler) LockRoom(c *gin.Context) {
+	roomID := c.Param("id")
+
+	var body struct {
+		CreatorID string `json:"creator_id"`
+	}
+	if err := c.ShouldBindJSON(&body); err != nil || body.CreatorID == "" {
+		respondError(c, http.StatusBadRequest, "creator_id is required")
+		return
+	}
+
+	err := rdb.LockRoom(context.Background(), h.redis, roomID, body.CreatorID)
+	if err != nil {
+		switch {
+		case errors.Is(err, rdb.ErrRoomNotFound):
+			respondError(c, http.StatusNotFound, "room not found")
+		case errors.Is(err, rdb.ErrNotCreator):
+			respondError(c, http.StatusUnauthorized, "only the room creator can lock the room")
+		case errors.Is(err, rdb.ErrAlreadyLocked):
+			respondError(c, http.StatusConflict, "room is already locked")
+		default:
+			respondError(c, http.StatusInternalServerError, "could not lock room")
+		}
+		return
+	}
+
+	// Notify any connected WebSocket clients about the lock
+	data, _ := room.NewEvent(room.EventRoomLocked, map[string]string{"room_id": roomID})
+	h.manager.NotifyRoom(roomID, data)
+
+	respondOK(c, gin.H{
+		"status":    "locked",
+		"locked_at": time.Now().Format(time.RFC3339),
+	})
+}

@@ -1,0 +1,27 @@
+# ── Go ────────────────────────────────────────────────
+backend/tmp/
+backend/vendor/
+*.exe
+*.test
+*.out
+
+# ── Environment (never commit secrets) ────────────────
+backend/.env
+frontend/.env
+frontend/.env.local
+frontend/.env.production
+
+# ── Node / React ──────────────────────────────────────
+frontend/node_modules/
+frontend/dist/
+frontend/build/
+frontend/.pnp
+frontend/.pnp.js
+
+# ── Logs ──────────────────────────────────────────────
+*.log
+build-errors.log
+
+# ── OS ────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
