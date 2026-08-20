@@ -1,4 +1,4 @@
-package room
+package realtime
 
 import (
 	"encoding/json"
@@ -80,20 +80,17 @@ type PollUpdatePayload struct {
 	Votes  map[string]int `json:"votes"`
 }
 
-// FocusModePayload is broadcast when focus mode is toggled.
 type FocusModePayload struct {
 	Enabled         bool   `json:"enabled"`
 	FloorHolderID   string `json:"floor_holder_id,omitempty"`
 	FloorHolderName string `json:"floor_holder_name,omitempty"`
 }
 
-// FloorPayload is broadcast when the floor changes hands.
 type FloorPayload struct {
 	ParticipantID string `json:"participant_id"`
 	DisplayName   string `json:"display_name"`
 }
 
-// SummaryPayload is the AI-generated room summary sent to all clients.
 type SummaryPayload struct {
 	TLDR         string   `json:"tldr"`
 	Decisions    []string `json:"decisions"`

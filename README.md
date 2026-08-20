@@ -17,16 +17,32 @@ Ephemeral real-time rooms — no accounts, no persistence. Create a room, share 
 ```
 roomly/
 ├── backend/
-│   ├── cmd/server/         # Entry point
+│   ├── cmd/server/             # Entry point
 │   ├── internal/
-│   │   ├── ai/             # Mistral AI client (summarize + translate)
-│   │   ├── api/            # HTTP handlers and routes
-│   │   ├── redis/          # Redis client and room persistence
-│   │   ├── room/           # Hub, Client, events, focus mode
-│   │   └── websocket/      # WebSocket upgrade handler
+│   │   ├── ai/                 # Mistral AI client (summarize + translate)
+│   │   ├── api/                # HTTP handlers, routes, CORS middleware
+│   │   ├── models/             # Shared data types (Room struct)
+│   │   ├── realtime/           # Hub, Client, events, focus mode, polls
+│   │   ├── store/              # Redis client and room persistence
+│   │   └── ws/                 # WebSocket upgrade handler
 │   ├── .env.example
 │   └── docker-compose.yml
-└── frontend/               # React app (coming soon)
+└── frontend/
+    └── src/
+        ├── components/
+        │   ├── home/           # CreateRoomForm, JoinRoomInput
+        │   └── room/           # RoomHeader, ParticipantList, FocusModeBar,
+        │                       # MessageList, MessageItem, PollCard,
+        │                       # ChatInput, TypingIndicator,
+        │                       # CreatePollModal, SummaryModal, QRModal
+        ├── hooks/
+        │   └── useRoom.js      # WebSocket state machine (useReducer)
+        ├── pages/
+        │   ├── Home.jsx        # Create + Join room
+        │   └── Room.jsx        # Live room view
+        ├── App.jsx
+        ├── index.css           # Design system (variables, primitives)
+        └── main.jsx
 ```
 
 ## Quick Start
@@ -42,8 +58,8 @@ cp .env.example .env
 # Run backend
 go run cmd/server/main.go
 
-# Run frontend (once scaffolded)
-cd frontend && npm run dev
+# Run frontend
+cd frontend && npm install && npm run dev
 ```
 
 ## Environment Variables
@@ -52,10 +68,8 @@ cd frontend && npm run dev
 |----------|---------|-------------|
 | `PORT` | `8080` | HTTP server port |
 | `REDIS_URL` | `localhost:6379` | Redis address |
-| `FRONTEND_URL` | `http://localhost:5173` | Used in join links and QR codes |
+| `FRONTEND_URL` | `http://localhost:5173` | Allowed CORS origin and base URL for join links and QR codes |
 | `MISTRAL_API_KEY` | _(empty)_ | Mistral API key — leave blank to disable AI |
-| `DEFAULT_ROOM_DURATION` | `60` | Default room TTL in minutes |
-| `MAX_ROOM_DURATION` | `120` | Maximum allowed TTL |
 
 ## Backend API
 

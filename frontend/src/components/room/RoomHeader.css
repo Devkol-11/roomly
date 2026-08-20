@@ -1,0 +1,57 @@
+.room-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 16px;
+  height: 52px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg);
+  flex-shrink: 0;
+}
+
+.rh-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+}
+
+.rh-logo {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text);
+  text-decoration: none;
+}
+.rh-logo:hover { color: var(--primary); }
+
+.rh-sep { color: var(--text-light); }
+
+.rh-id {
+  font-family: ui-monospace, monospace;
+  font-size: 13px;
+  color: var(--text-muted);
+  background: var(--surface);
+  padding: 2px 6px;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+}
+
+.rh-center {
+  display: flex;
+  align-items: center;
+}
+
+.rh-timer {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.rh-right {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}

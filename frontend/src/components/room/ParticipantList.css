@@ -1,0 +1,115 @@
+.participant-list {
+  padding: 12px 0;
+}
+
+.pl-heading {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 14px 8px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-light);
+}
+
+.pl-count {
+  background: var(--border);
+  color: var(--text-muted);
+  border-radius: 99px;
+  padding: 0 5px;
+  font-size: 11px;
+}
+
+.pl-empty {
+  padding: 0 14px;
+  font-size: 13px;
+  color: var(--text-light);
+}
+
+.pl-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 14px;
+  transition: background 0.1s;
+}
+.pl-item:hover { background: var(--surface-hover); }
+.pl-item:hover .pl-actions { opacity: 1; }
+
+.pl-avatar {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--primary-light);
+  color: var(--primary);
+  font-size: 12px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.pl-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.pl-name {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text);
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.pl-tag {
+  font-size: 10px;
+  font-weight: 600;
+  padding: 1px 5px;
+  border-radius: 99px;
+  background: var(--slate-light);
+  color: var(--slate);
+}
+.pl-tag.creator {
+  background: var(--primary-light);
+  color: var(--primary);
+}
+
+.pl-floor {
+  font-size: 11px;
+  color: var(--amber);
+}
+
+.pl-actions {
+  display: flex;
+  gap: 4px;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.pl-action {
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  width: 22px;
+  height: 22px;
+  cursor: pointer;
+  font-size: 11px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted);
+  transition: background 0.1s, color 0.1s;
+}
+.pl-action:hover { background: var(--surface-hover); color: var(--text); }
+.pl-action.danger:hover { background: var(--red-light); color: var(--red); border-color: #fca5a5; }

@@ -9,21 +9,22 @@ import (
 	"net/http"
 	"time"
 
-	"roomly/internal/room"
-	rdb "roomly/internal/redis"
+	"roomly/internal/models"
+	"roomly/internal/realtime"
+	"roomly/internal/store"
 
 	"github.com/gin-gonic/gin"
-	goredis "github.com/redis/go-redis/v9"
+	"github.com/redis/go-redis/v9"
 	qrcode "github.com/skip2/go-qrcode"
 )
 
 type Handler struct {
-	redis       *goredis.Client
-	manager     *room.Manager
+	redis       *redis.Client
+	manager     *realtime.Manager
 	frontendURL string
 }
 
-func NewHandler(client *goredis.Client, manager *room.Manager, frontendURL string) *Handler {
+func NewHandler(client *redis.Client, manager *realtime.Manager, frontendURL string) *Handler {
 	return &Handler{redis: client, manager: manager, frontendURL: frontendURL}
 }
 
@@ -47,12 +48,10 @@ func (h *Handler) CreateRoom(c *gin.Context) {
 		DurationMinutes int    `json:"duration_minutes"`
 		DisplayName     string `json:"display_name"`
 	}
-
 	if err := c.ShouldBindJSON(&body); err != nil {
 		respondError(c, http.StatusBadRequest, "invalid request body")
 		return
 	}
-
 	if body.DurationMinutes == 0 {
 		body.DurationMinutes = 60
 	}
@@ -77,7 +76,7 @@ func (h *Handler) CreateRoom(c *gin.Context) {
 	}
 
 	now := time.Now()
-	r := &room.Room{
+	r := &models.Room{
 		ID:        roomID,
 		Status:    "active",
 		CreatedAt: now,
@@ -86,14 +85,12 @@ func (h *Handler) CreateRoom(c *gin.Context) {
 		Duration:  body.DurationMinutes,
 	}
 
-	if err := rdb.SaveRoom(context.Background(), h.redis, r); err != nil {
+	if err := store.SaveRoom(context.Background(), h.redis, r); err != nil {
 		respondError(c, http.StatusInternalServerError, "could not save room")
 		return
 	}
 
 	joinURL := fmt.Sprintf("%s/rooms/%s", h.frontendURL, roomID)
-
-	// Generate QR code as a base64-encoded PNG (256×256).
 	var qrBase64 string
 	if png, err := qrcode.Encode(joinURL, qrcode.Medium, 256); err == nil {
 		qrBase64 = "data:image/png;base64," + base64.StdEncoding.EncodeToString(png)
@@ -110,8 +107,7 @@ func (h *Handler) CreateRoom(c *gin.Context) {
 
 func (h *Handler) GetRoom(c *gin.Context) {
 	roomID := c.Param("id")
-
-	r, err := rdb.GetRoom(context.Background(), h.redis, roomID)
+	r, err := store.GetRoom(context.Background(), h.redis, roomID)
 	if err != nil {
 		respondError(c, http.StatusInternalServerError, "could not fetch room")
 		return
@@ -120,7 +116,6 @@ func (h *Handler) GetRoom(c *gin.Context) {
 		respondError(c, http.StatusNotFound, "room not found or has expired")
 		return
 	}
-
 	respondOK(c, gin.H{
 		"id":                r.ID,
 		"status":            r.Status,
@@ -133,7 +128,6 @@ func (h *Handler) GetRoom(c *gin.Context) {
 
 func (h *Handler) LockRoom(c *gin.Context) {
 	roomID := c.Param("id")
-
 	var body struct {
 		CreatorID string `json:"creator_id"`
 	}
@@ -141,25 +135,22 @@ func (h *Handler) LockRoom(c *gin.Context) {
 		respondError(c, http.StatusBadRequest, "creator_id is required")
 		return
 	}
-
-	err := rdb.LockRoom(context.Background(), h.redis, roomID, body.CreatorID)
+	err := store.LockRoom(context.Background(), h.redis, roomID, body.CreatorID)
 	if err != nil {
 		switch {
-		case errors.Is(err, rdb.ErrRoomNotFound):
+		case errors.Is(err, store.ErrRoomNotFound):
 			respondError(c, http.StatusNotFound, "room not found")
-		case errors.Is(err, rdb.ErrNotCreator):
+		case errors.Is(err, store.ErrNotCreator):
 			respondError(c, http.StatusUnauthorized, "only the room creator can lock the room")
-		case errors.Is(err, rdb.ErrAlreadyLocked):
+		case errors.Is(err, store.ErrAlreadyLocked):
 			respondError(c, http.StatusConflict, "room is already locked")
 		default:
 			respondError(c, http.StatusInternalServerError, "could not lock room")
 		}
 		return
 	}
-
-	data, _ := room.NewEvent(room.EventRoomLocked, map[string]string{"room_id": roomID})
+	data, _ := realtime.NewEvent(realtime.EventRoomLocked, map[string]string{"room_id": roomID})
 	h.manager.NotifyRoom(roomID, data)
-
 	respondOK(c, gin.H{
 		"status":    "locked",
 		"locked_at": time.Now().Format(time.RFC3339),

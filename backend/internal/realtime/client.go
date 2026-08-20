@@ -1,4 +1,4 @@
-package room
+package realtime
 
 import (
 	"crypto/rand"
@@ -20,15 +20,12 @@ type Client struct {
 	ID          string
 	DisplayName string
 	RoomID      string
-	Language    string // BCP-47 tag or plain name, e.g. "en", "French". Empty = no translation.
+	Language    string
 	hub         *Hub
 	conn        *websocket.Conn
 	send        chan []byte
 }
 
-// NewClient creates a Client. participantID is optional — pass the creator_id to
-// keep creator privileges across reconnects. language is the preferred language
-// for AI translation (empty disables translation for this client).
 func NewClient(displayName, roomID, participantID, language string, hub *Hub, conn *websocket.Conn) (*Client, error) {
 	id := participantID
 	if id == "" {
@@ -66,14 +63,12 @@ func (c *Client) ReadLoop() {
 		c.hub.unregister <- c
 		c.conn.Close()
 	}()
-
 	c.conn.SetReadLimit(maxMessageSize)
 	c.conn.SetReadDeadline(time.Now().Add(pongWait))
 	c.conn.SetPongHandler(func(string) error {
 		c.conn.SetReadDeadline(time.Now().Add(pongWait))
 		return nil
 	})
-
 	for {
 		_, raw, err := c.conn.ReadMessage()
 		if err != nil {
@@ -92,7 +87,6 @@ func (c *Client) WriteLoop() {
 		ticker.Stop()
 		c.conn.Close()
 	}()
-
 	for {
 		select {
 		case message, ok := <-c.send:
@@ -119,19 +113,16 @@ func (c *Client) handleMessage(raw []byte) {
 		c.sendError("invalid message format")
 		return
 	}
-
 	switch event.Type {
 	case EventMessage:
 		c.handleChat(event.Payload)
 	case EventTypingStart:
 		c.hub.broadcastExcept(c, mustEvent(EventTypingStart, TypingPayload{
-			ParticipantID: c.ID,
-			DisplayName:   c.DisplayName,
+			ParticipantID: c.ID, DisplayName: c.DisplayName,
 		}))
 	case EventTypingStop:
 		c.hub.broadcastExcept(c, mustEvent(EventTypingStop, TypingPayload{
-			ParticipantID: c.ID,
-			DisplayName:   c.DisplayName,
+			ParticipantID: c.ID, DisplayName: c.DisplayName,
 		}))
 	case EventPollCreate:
 		c.handlePollCreate(event.Payload)
@@ -141,7 +132,6 @@ func (c *Client) handleMessage(raw []byte) {
 		c.handleLockRoom()
 	case "kick_member":
 		c.handleKickMember(event.Payload)
-	// Focus mode
 	case "focus_mode_on":
 		c.handleFocusModeOn()
 	case "focus_mode_off":
@@ -152,7 +142,6 @@ func (c *Client) handleMessage(raw []byte) {
 		c.handleFloorRelease()
 	case "grant_floor":
 		c.handleGrantFloor(event.Payload)
-	// AI summary
 	case "request_summary":
 		c.handleSummaryRequest()
 	default:
@@ -172,23 +161,18 @@ func (c *Client) handleChat(payload json.RawMessage) {
 		c.sendError("message too long (max 2000 characters)")
 		return
 	}
-
-	// Enforce focus mode: only the floor holder may speak.
 	if c.hub.IsFocusActive() && !c.hub.IsFloorHolder(c.ID) {
 		c.sendError("focus mode is active — request the floor first")
 		return
 	}
-
 	msgID, _ := generateClientID()
 	msg := MessagePayload{
-		ID:         msgID[:8],
-		SenderID:   c.ID,
+		ID:        msgID[:8],
+		SenderID:  c.ID,
 		SenderName: c.DisplayName,
-		Text:       body.Text,
-		Timestamp:  time.Now(),
+		Text:      body.Text,
+		Timestamp: time.Now(),
 	}
-
-	// broadcastMessage handles per-language translation and message storage.
 	c.hub.broadcastMessage(c, msg)
 }
 
@@ -209,7 +193,6 @@ func (c *Client) handlePollCreate(payload json.RawMessage) {
 		c.sendError("polls must have 2-5 options")
 		return
 	}
-
 	pollID, _ := generateClientID()
 	poll := &Poll{
 		ID:          pollID[:8],
@@ -221,12 +204,10 @@ func (c *Client) handlePollCreate(payload json.RawMessage) {
 		CreatedAt:   time.Now(),
 		Votes:       make(map[string]int),
 	}
-
 	if err := c.hub.SavePoll(poll); err != nil {
 		c.sendError("could not create poll")
 		return
 	}
-
 	c.hub.broadcast <- mustEvent(EventPollCreate, poll)
 }
 
@@ -236,7 +217,6 @@ func (c *Client) handlePollVote(payload json.RawMessage) {
 		c.sendError("invalid vote payload")
 		return
 	}
-
 	voted, err := c.hub.RecordVote(body.PollID, c.ID, body.OptionIndex)
 	if err != nil {
 		c.sendError("could not record vote")
@@ -246,16 +226,13 @@ func (c *Client) handlePollVote(payload json.RawMessage) {
 		c.sendError("you have already voted on this poll")
 		return
 	}
-
 	results, err := c.hub.GetPollResults(body.PollID)
 	if err != nil {
 		c.sendError("could not get poll results")
 		return
 	}
-
 	c.hub.broadcast <- mustEvent(EventPollUpdate, PollUpdatePayload{
-		PollID: body.PollID,
-		Votes:  results,
+		PollID: body.PollID, Votes: results,
 	})
 }
 
@@ -278,31 +255,11 @@ func (c *Client) handleKickMember(payload json.RawMessage) {
 	}
 }
 
-// ─── Focus mode handlers ──────────────────────────────────────────────────────
-
-func (c *Client) handleFocusModeOn() {
-	if err := c.hub.EnableFocusMode(c.ID, c.DisplayName); err != nil {
-		c.sendError(err.Error())
-	}
-}
-
-func (c *Client) handleFocusModeOff() {
-	if err := c.hub.DisableFocusMode(c.ID); err != nil {
-		c.sendError(err.Error())
-	}
-}
-
-func (c *Client) handleFloorRequest() {
-	if err := c.hub.RequestFloor(c); err != nil {
-		c.sendError(err.Error())
-	}
-}
-
-func (c *Client) handleFloorRelease() {
-	if err := c.hub.ReleaseFloor(c.ID, c.DisplayName); err != nil {
-		c.sendError(err.Error())
-	}
-}
+func (c *Client) handleFocusModeOn()  { c.maybeError(c.hub.EnableFocusMode(c.ID, c.DisplayName)) }
+func (c *Client) handleFocusModeOff() { c.maybeError(c.hub.DisableFocusMode(c.ID)) }
+func (c *Client) handleFloorRequest() { c.maybeError(c.hub.RequestFloor(c)) }
+func (c *Client) handleFloorRelease() { c.maybeError(c.hub.ReleaseFloor(c.ID, c.DisplayName)) }
+func (c *Client) handleSummaryRequest() { c.maybeError(c.hub.RequestSummary(c.ID)) }
 
 func (c *Client) handleGrantFloor(payload json.RawMessage) {
 	var body struct {
@@ -312,15 +269,11 @@ func (c *Client) handleGrantFloor(payload json.RawMessage) {
 		c.sendError("participant_id is required")
 		return
 	}
-	if err := c.hub.GrantFloor(c.ID, body.ParticipantID); err != nil {
-		c.sendError(err.Error())
-	}
+	c.maybeError(c.hub.GrantFloor(c.ID, body.ParticipantID))
 }
 
-// ─── AI summary handler ───────────────────────────────────────────────────────
-
-func (c *Client) handleSummaryRequest() {
-	if err := c.hub.RequestSummary(c.ID); err != nil {
+func (c *Client) maybeError(err error) {
+	if err != nil {
 		c.sendError(err.Error())
 	}
 }

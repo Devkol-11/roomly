@@ -1,4 +1,4 @@
-package room
+package realtime
 
 import (
 	"context"
@@ -11,7 +11,7 @@ import (
 
 	"roomly/internal/ai"
 
-	goredis "github.com/redis/go-redis/v9"
+	"github.com/redis/go-redis/v9"
 )
 
 // Hub manages all live WebSocket clients inside one room.
@@ -19,24 +19,24 @@ type Hub struct {
 	roomID    string
 	creatorID string
 	clients   map[string]*Client
-	register  chan *Client
+	register   chan *Client
 	unregister chan *Client
 	broadcast  chan []byte
 	kick       chan string
 	expireCh   chan struct{}
 	expired    bool
-	redis      *goredis.Client
+	redis      *redis.Client
 	ai         *ai.Client
 
-	// Focus mode (talking-stick). Protected by focusMu because it is read
-	// from client goroutines and written via the exported methods below.
+	// Focus mode protected by focusMu because it is read from client
+	// goroutines and written via the exported methods below.
 	focusMu         sync.RWMutex
 	focusMode       bool
 	floorHolderID   string
 	floorHolderName string
 }
 
-func newHub(roomID, creatorID string, redis *goredis.Client, aiClient *ai.Client) *Hub {
+func newHub(roomID, creatorID string, redisClient *redis.Client, aiClient *ai.Client) *Hub {
 	return &Hub{
 		roomID:     roomID,
 		creatorID:  creatorID,
@@ -46,7 +46,7 @@ func newHub(roomID, creatorID string, redis *goredis.Client, aiClient *ai.Client
 		broadcast:  make(chan []byte, 256),
 		kick:       make(chan string),
 		expireCh:   make(chan struct{}, 1),
-		redis:      redis,
+		redis:      redisClient,
 		ai:         aiClient,
 	}
 }
@@ -71,7 +71,7 @@ func (h *Hub) run() {
 					ParticipantID: client.ID,
 					DisplayName:   client.DisplayName,
 				}))
-				// If the floor holder left, release the floor automatically.
+				// Release the floor automatically if the holder disconnects.
 				h.focusMu.Lock()
 				if h.focusMode && h.floorHolderID == client.ID {
 					h.floorHolderID = ""
@@ -101,7 +101,7 @@ func (h *Hub) run() {
 					ParticipantID: targetID,
 					DisplayName:   target.DisplayName,
 				}))
-				log.Printf("participant %s was kicked from room %s", targetID, h.roomID)
+				log.Printf("participant %s kicked from room %s", targetID, h.roomID)
 			}
 
 		case message := <-h.broadcast:
@@ -140,26 +140,20 @@ func (h *Hub) watchExpiry() {
 	defer timer.Stop()
 	<-timer.C
 
-	// Generate AI summary before the room disappears.
 	if h.ai != nil && h.ai.Enabled() {
 		h.generateAndBroadcastSummary()
 	}
-
 	h.expireCh <- struct{}{}
 }
 
-// generateAndBroadcastSummary fetches stored messages, calls Mistral, and
-// sends the result through the broadcast channel so run() fans it out safely.
 func (h *Hub) generateAndBroadcastSummary() {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
-	key := "room:" + h.roomID + ":messages"
-	raw, err := h.redis.LRange(ctx, key, 0, -1).Result()
+	raw, err := h.redis.LRange(ctx, "room:"+h.roomID+":messages", 0, -1).Result()
 	if err != nil {
 		return
 	}
-
 	var stored []ai.StoredMessage
 	for _, m := range raw {
 		var sm ai.StoredMessage
@@ -167,13 +161,11 @@ func (h *Hub) generateAndBroadcastSummary() {
 			stored = append(stored, sm)
 		}
 	}
-
 	summary, err := h.ai.Summarize(ctx, stored)
 	if err != nil {
 		log.Printf("room %s summary error: %v", h.roomID, err)
 		return
 	}
-
 	data := mustEvent(EventRoomSummary, SummaryPayload{
 		TLDR:         summary.TLDR,
 		Decisions:    summary.Decisions,
@@ -181,14 +173,12 @@ func (h *Hub) generateAndBroadcastSummary() {
 		Sentiment:    summary.Sentiment,
 		MessageCount: len(stored),
 	})
-	// Send through broadcast channel — run() will fan it out without races.
 	select {
 	case h.broadcast <- data:
 	default:
 	}
 }
 
-// RequestSummary lets the creator demand a summary mid-session.
 func (h *Hub) RequestSummary(requesterID string) error {
 	if requesterID != h.creatorID {
 		return fmt.Errorf("only the room creator can request a summary")
@@ -214,7 +204,6 @@ func (h *Hub) IsFloorHolder(clientID string) bool {
 	return h.floorHolderID == clientID
 }
 
-// EnableFocusMode turns on focus mode. The creator gets the floor first.
 func (h *Hub) EnableFocusMode(requesterID, requesterName string) error {
 	if requesterID != h.creatorID {
 		return fmt.Errorf("only the room creator can enable focus mode")
@@ -224,7 +213,6 @@ func (h *Hub) EnableFocusMode(requesterID, requesterName string) error {
 	h.floorHolderID = requesterID
 	h.floorHolderName = requesterName
 	h.focusMu.Unlock()
-
 	h.sendAll(mustEvent(EventFocusModeEnabled, FocusModePayload{
 		Enabled:         true,
 		FloorHolderID:   requesterID,
@@ -233,7 +221,6 @@ func (h *Hub) EnableFocusMode(requesterID, requesterName string) error {
 	return nil
 }
 
-// DisableFocusMode turns off focus mode. Anyone can speak freely again.
 func (h *Hub) DisableFocusMode(requesterID string) error {
 	if requesterID != h.creatorID {
 		return fmt.Errorf("only the room creator can disable focus mode")
@@ -243,16 +230,13 @@ func (h *Hub) DisableFocusMode(requesterID string) error {
 	h.floorHolderID = ""
 	h.floorHolderName = ""
 	h.focusMu.Unlock()
-
 	h.sendAll(mustEvent(EventFocusModeDisabled, FocusModePayload{Enabled: false}))
 	return nil
 }
 
-// RequestFloor grants the floor to c if it is currently free.
 func (h *Hub) RequestFloor(c *Client) error {
 	h.focusMu.Lock()
 	defer h.focusMu.Unlock()
-
 	if !h.focusMode {
 		return fmt.Errorf("focus mode is not active")
 	}
@@ -261,7 +245,6 @@ func (h *Hub) RequestFloor(c *Client) error {
 	}
 	h.floorHolderID = c.ID
 	h.floorHolderName = c.DisplayName
-
 	h.sendAll(mustEvent(EventFloorGranted, FloorPayload{
 		ParticipantID: c.ID,
 		DisplayName:   c.DisplayName,
@@ -269,11 +252,9 @@ func (h *Hub) RequestFloor(c *Client) error {
 	return nil
 }
 
-// ReleaseFloor releases the floor from the current holder.
 func (h *Hub) ReleaseFloor(clientID, clientName string) error {
 	h.focusMu.Lock()
 	defer h.focusMu.Unlock()
-
 	if !h.focusMode {
 		return fmt.Errorf("focus mode is not active")
 	}
@@ -282,7 +263,6 @@ func (h *Hub) ReleaseFloor(clientID, clientName string) error {
 	}
 	h.floorHolderID = ""
 	h.floorHolderName = ""
-
 	h.sendAll(mustEvent(EventFloorReleased, FloorPayload{
 		ParticipantID: clientID,
 		DisplayName:   clientName,
@@ -290,7 +270,6 @@ func (h *Hub) ReleaseFloor(clientID, clientName string) error {
 	return nil
 }
 
-// GrantFloor lets the creator hand the floor to a specific participant.
 func (h *Hub) GrantFloor(requesterID, targetID string) error {
 	if requesterID != h.creatorID {
 		return fmt.Errorf("only the room creator can grant the floor")
@@ -308,7 +287,6 @@ func (h *Hub) GrantFloor(requesterID, targetID string) error {
 	h.floorHolderID = targetID
 	h.floorHolderName = target.DisplayName
 	h.focusMu.Unlock()
-
 	h.sendAll(mustEvent(EventFloorGranted, FloorPayload{
 		ParticipantID: targetID,
 		DisplayName:   target.DisplayName,
@@ -316,15 +294,10 @@ func (h *Hub) GrantFloor(requesterID, targetID string) error {
 	return nil
 }
 
-// ─── Chat broadcast with optional per-language translation ───────────────────
+// ─── Broadcast with optional per-language translation ────────────────────────
 
-// broadcastMessage sends msg to all clients. If AI translation is enabled, clients
-// with a different language from the sender receive an async-translated version.
-// The sender and same-language clients get the original immediately.
 func (h *Hub) broadcastMessage(sender *Client, msg MessagePayload) {
-	// Store for summarizer regardless of translation.
 	h.storeMessage(msg)
-
 	original := mustEvent(EventMessage, msg)
 
 	if h.ai == nil || !h.ai.Enabled() {
@@ -332,11 +305,9 @@ func (h *Hub) broadcastMessage(sender *Client, msg MessagePayload) {
 		return
 	}
 
-	// Group clients by their target language, skipping same-language as sender.
 	langTargets := make(map[string][]*Client)
 	for _, c := range h.clients {
 		if c.Language == "" || c.Language == sender.Language {
-			// Same language: send original immediately via the normal channel.
 			select {
 			case c.send <- original:
 			default:
@@ -346,16 +317,13 @@ func (h *Hub) broadcastMessage(sender *Client, msg MessagePayload) {
 		}
 	}
 
-	// For each unique foreign language, translate and deliver asynchronously.
 	for lang, targets := range langTargets {
 		go func(targetLang string, recipients []*Client) {
 			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 			defer cancel()
-
 			translated, err := h.ai.Translate(ctx, msg.Text, targetLang)
 			if err != nil {
-				log.Printf("translate to %s error: %v", targetLang, err)
-				// Fall back to original on error.
+				log.Printf("translate to %s: %v", targetLang, err)
 				for _, r := range recipients {
 					select {
 					case r.send <- original:
@@ -364,12 +332,10 @@ func (h *Hub) broadcastMessage(sender *Client, msg MessagePayload) {
 				}
 				return
 			}
-
 			translatedMsg := msg
 			translatedMsg.OriginalText = msg.Text
 			translatedMsg.Text = translated
 			translatedMsg.TranslatedFrom = sender.Language
-
 			data := mustEvent(EventMessage, translatedMsg)
 			for _, r := range recipients {
 				select {
@@ -381,14 +347,12 @@ func (h *Hub) broadcastMessage(sender *Client, msg MessagePayload) {
 	}
 }
 
-// storeMessage appends the message to the room's Redis list for later summarization.
 func (h *Hub) storeMessage(msg MessagePayload) {
 	if h.ai == nil || !h.ai.Enabled() {
 		return
 	}
 	ctx := context.Background()
 	key := "room:" + h.roomID + ":messages"
-
 	sm := ai.StoredMessage{
 		SenderName: msg.SenderName,
 		Text:       msg.Text,
@@ -396,7 +360,6 @@ func (h *Hub) storeMessage(msg MessagePayload) {
 	}
 	data, _ := json.Marshal(sm)
 	h.redis.RPush(ctx, key, data)
-	// Keep the list alive at least as long as the room (cap at 24h for safety).
 	h.redis.Expire(ctx, key, 24*time.Hour)
 }
 
@@ -423,9 +386,7 @@ func (h *Hub) broadcastExcept(sender *Client, data []byte) {
 	}
 }
 
-func (h *Hub) Register(c *Client) {
-	h.register <- c
-}
+func (h *Hub) Register(c *Client) { h.register <- c }
 
 func (h *Hub) Notify(data []byte) {
 	select {
@@ -458,14 +419,6 @@ func (h *Hub) LockRoomWS(requesterID string) error {
 	}
 	h.sendAll(mustEvent(EventRoomLocked, map[string]string{"room_id": h.roomID}))
 	return nil
-}
-
-func (h *Hub) ParticipantCount() int {
-	return len(h.clients)
-}
-
-func (h *Hub) IsCreator(participantID string) bool {
-	return participantID == h.creatorID
 }
 
 func (h *Hub) trackParticipant(participantID string, add bool) {
@@ -522,17 +475,18 @@ func (h *Hub) GetPollResults(pollID string) (map[string]int, error) {
 
 // ─── Manager ──────────────────────────────────────────────────────────────────
 
+// Manager owns all active hubs across every room.
 type Manager struct {
 	mu    sync.RWMutex
 	hubs  map[string]*Hub
-	redis *goredis.Client
+	redis *redis.Client
 	ai    *ai.Client
 }
 
-func NewManager(redis *goredis.Client, aiClient *ai.Client) *Manager {
+func NewManager(redisClient *redis.Client, aiClient *ai.Client) *Manager {
 	return &Manager{
 		hubs:  make(map[string]*Hub),
-		redis: redis,
+		redis: redisClient,
 		ai:    aiClient,
 	}
 }
@@ -540,11 +494,9 @@ func NewManager(redis *goredis.Client, aiClient *ai.Client) *Manager {
 func (m *Manager) GetOrCreateHub(roomID, creatorID string) *Hub {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-
 	if hub, ok := m.hubs[roomID]; ok {
 		return hub
 	}
-
 	hub := newHub(roomID, creatorID, m.redis, m.ai)
 	m.hubs[roomID] = hub
 	go hub.run()
