@@ -1,115 +1,122 @@
 .participant-list {
-  padding: 12px 0;
+  padding: 1rem;
 }
 
 .pl-heading {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 0 14px 8px;
-  font-size: 11px;
-  font-weight: 600;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 0.85rem;
+  color: var(--ks-muted);
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.16em;
   text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--text-light);
 }
 
 .pl-count {
-  background: var(--border);
-  color: var(--text-muted);
-  border-radius: 99px;
-  padding: 0 5px;
-  font-size: 11px;
+  color: var(--ks-kinpaku);
 }
 
 .pl-empty {
-  padding: 0 14px;
-  font-size: 13px;
-  color: var(--text-light);
+  border: 1px solid var(--ks-rule);
+  background: var(--ks-lacquer-deep);
+  padding: 0.8rem;
+  color: var(--ks-faint);
+  font-size: 0.85rem;
 }
 
 .pl-item {
-  display: flex;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 0.65rem;
   align-items: center;
-  gap: 8px;
-  padding: 6px 14px;
-  transition: background 0.1s;
+  border: 1px solid var(--ks-rule);
+  background: var(--ks-raised-lacquer);
+  padding: 0.72rem;
+  margin-bottom: 0.55rem;
 }
-.pl-item:hover { background: var(--surface-hover); }
-.pl-item:hover .pl-actions { opacity: 1; }
+
+.pl-item.has-floor {
+  border-color: var(--ks-kinpaku);
+  background: oklch(84% 0.19 80.46 / 0.1);
+}
 
 .pl-avatar {
-  width: 28px;
-  height: 28px;
-  border-radius: 50%;
-  background: var(--primary-light);
-  color: var(--primary);
-  font-size: 12px;
-  font-weight: 600;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
+  display: grid;
+  width: 2rem;
+  height: 2rem;
+  place-items: center;
+  border: 1px solid oklch(74% 0.09 82 / 0.48);
+  border-radius: 5px;
+  color: var(--ks-kinpaku);
+  font-size: 0.78rem;
+  font-weight: 800;
 }
 
 .pl-info {
-  flex: 1;
   min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
 }
 
 .pl-name {
-  font-size: 13px;
-  font-weight: 500;
-  color: var(--text);
   display: flex;
   align-items: center;
-  gap: 5px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  gap: 0.35rem;
+  min-width: 0;
+  color: var(--ks-champagne);
+  font-size: 0.9rem;
+  font-weight: 700;
 }
 
 .pl-tag {
-  font-size: 10px;
-  font-weight: 600;
-  padding: 1px 5px;
-  border-radius: 99px;
-  background: var(--slate-light);
-  color: var(--slate);
+  border: 1px solid var(--ks-rule);
+  border-radius: 999px;
+  padding: 0.08rem 0.35rem;
+  color: var(--ks-muted);
+  font-family: var(--font-mono);
+  font-size: 0.58rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
 }
+
 .pl-tag.creator {
-  background: var(--primary-light);
-  color: var(--primary);
+  border-color: oklch(74% 0.09 82 / 0.5);
+  color: var(--ks-kinpaku);
 }
 
 .pl-floor {
-  font-size: 11px;
-  color: var(--amber);
+  display: block;
+  margin-top: 0.18rem;
+  color: var(--ks-patina);
+  font-size: 0.74rem;
 }
 
 .pl-actions {
+  grid-column: 1 / -1;
   display: flex;
-  gap: 4px;
-  opacity: 0;
-  transition: opacity 0.15s;
+  gap: 0.4rem;
 }
 
 .pl-action {
-  background: none;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  width: 22px;
-  height: 22px;
-  cursor: pointer;
-  font-size: 11px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--text-muted);
-  transition: background 0.1s, color 0.1s;
+  flex: 1;
+  border: 1px solid var(--ks-rule);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--ks-muted);
+  padding: 0.4rem;
+  font-size: 0.72rem;
+  font-weight: 800;
+  transition: transform 150ms var(--ease-out-ui), border-color 180ms var(--ease-out-ui), color 180ms var(--ease-out-ui);
 }
-.pl-action:hover { background: var(--surface-hover); color: var(--text); }
-.pl-action.danger:hover { background: var(--red-light); color: var(--red); border-color: #fca5a5; }
+
+.pl-action:hover {
+  border-color: var(--ks-patina);
+  color: var(--ks-patina);
+}
+
+.pl-action.danger:hover {
+  border-color: var(--ks-warning);
+  color: oklch(82% 0.11 35);
+}

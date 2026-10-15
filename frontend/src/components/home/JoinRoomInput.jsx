@@ -1,39 +1,30 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-
-function extractRoomId(value) {
-  // Accept bare ID or a full URL like http://…/rooms/ABC123
-  const match = value.match(/rooms\/([A-Za-z0-9]+)/)
-  return match ? match[1] : value.trim()
-}
+import { extractRoomId } from '../../lib/api.js'
+import { FormError } from '../ui.jsx'
 
 export default function JoinRoomInput() {
   const navigate = useNavigate()
   const [value, setValue] = useState('')
+  const [error, setError] = useState('')
 
   function handleJoin(e) {
     e.preventDefault()
     const id = extractRoomId(value)
-    if (!id) return
+    if (!id) return setError('Paste a room link or code.')
     navigate(`/rooms/${id}`)
   }
 
   return (
-    <form onSubmit={handleJoin}>
-      <div className="field">
-        <label className="label" htmlFor="join-id">Room ID or link</label>
-        <input
-          id="join-id"
-          className="input"
-          placeholder="aB3xZ9qR or http://…"
-          value={value}
-          onChange={e => setValue(e.target.value)}
-          required
-        />
+    <form onSubmit={handleJoin} className="space-y-5">
+      <div>
+        <label className="label" htmlFor="join-id">Room link or code</label>
+        <input id="join-id" className="input font-mono text-[14px]" placeholder="aB3xZ9qR or https://…/rooms/aB3xZ9qR"
+          value={value} onChange={e => { setValue(e.target.value); setError('') }} autoComplete="off" spellCheck={false} />
+        <p className="mt-2 text-[13px] text-fg-3">You’ll pick a display name on the next screen.</p>
       </div>
-      <button className="btn btn-secondary btn-full" type="submit">
-        Join room
-      </button>
+      <FormError>{error}</FormError>
+      <button className="btn btn-primary btn-lg w-full" type="submit">Continue</button>
     </form>
   )
 }

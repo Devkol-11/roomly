@@ -1,58 +1,46 @@
-import { useState, useEffect } from 'react'
+import { Modal, CopyButton, Icon } from '../ui.jsx'
 
-const API = import.meta.env.VITE_API_URL || 'http://localhost:8080'
-
-export default function QRModal({ roomId, onClose }) {
-  const [qrCode, setQrCode] = useState(null)
-  const [link,   setLink]   = useState('')
-
-  useEffect(() => {
-    // The QR code is only available in the create response.
-    // We re-fetch room info; if QR isn't stored we show the plain link.
-    fetch(`${API}/api/rooms/${roomId}`)
-      .then(r => r.json())
-      .then(data => {
-        setLink(`${window.location.origin}/rooms/${roomId}`)
-        // qr_code is not returned by GetRoom — only by CreateRoom.
-        // Retrieve from localStorage if the creator is viewing.
-        const saved = JSON.parse(localStorage.getItem(`roomly:${roomId}`) || 'null')
-        if (saved?.qrCode) setQrCode(saved.qrCode)
-      })
-      .catch(() => setLink(`${window.location.origin}/rooms/${roomId}`))
-  }, [roomId])
-
-  function copyLink() {
-    navigator.clipboard.writeText(link)
-  }
-
+// Invite dialog: link, room code, QR (host device only) and the host key.
+export default function QRModal({ roomId, session, isCreator, onClose }) {
+  const link = session?.link || `${window.location.origin}/rooms/${roomId}`
   return (
-    <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
-      <div className="modal" style={{ maxWidth: 360, textAlign: 'center' }}>
-        <div className="modal-header">
-          <span className="modal-title">Share this room</span>
-          <button className="modal-close" onClick={onClose}>×</button>
+    <Modal title="Invite people" description="Anyone with the link can join until the room closes or is locked." onClose={onClose}>
+      <div className="space-y-5">
+        <div>
+          <span className="label">Room link</span>
+          <div className="flex items-center gap-2 rounded-xl border border-line bg-surface-2 py-1.5 pl-3 pr-1.5">
+            <span className="min-w-0 flex-1 truncate font-mono text-[13px]">{link}</span>
+            <CopyButton text={link} />
+          </div>
         </div>
 
-        {qrCode ? (
-          <img src={qrCode} alt="Room QR code" style={{ width: 200, height: 200, display: 'block', margin: '0 auto 16px' }} />
-        ) : (
-          <div style={{
-            width: 200, height: 200, margin: '0 auto 16px',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 8,
-            color: 'var(--text-muted)', fontSize: 13,
-          }}>
-            QR available to room creator
+        <div className="flex items-center gap-4">
+          {session?.qrCode ? (
+            <img src={session.qrCode} alt="QR code for the room link" className="h-32 w-32 rounded-xl border border-line bg-white p-1.5" />
+          ) : (
+            <div className="grid h-32 w-32 shrink-0 place-items-center rounded-xl border border-dashed border-line-strong p-3 text-center text-xs text-fg-3">
+              QR code is shown on the host’s device
+            </div>
+          )}
+          <div className="text-sm text-fg-2">
+            <p>Or join with the code</p>
+            <p className="mt-1 font-mono text-xl tracking-wider text-fg">{roomId}</p>
+          </div>
+        </div>
+
+        {isCreator && session?.creatorId && (
+          <div className="rounded-xl bg-warn-soft p-3.5">
+            <div className="flex items-center gap-2 text-sm font-medium text-warn"><Icon name="key" size={15} />Your host key</div>
+            <p className="mt-1 text-[13px] leading-5 text-fg-2">Keep this private. Paste it under “More options” to get host controls on another device.</p>
+            <div className="mt-2 flex items-center gap-2">
+              <code className="min-w-0 flex-1 truncate rounded-lg bg-surface px-2.5 py-1.5 font-mono text-[13px]">{session.creatorId}</code>
+              <CopyButton text={session.creatorId} />
+            </div>
           </div>
         )}
 
-        <div className="copy-row" style={{ marginBottom: 16 }}>
-          <span>{link}</span>
-          <button className="btn btn-secondary btn-sm" onClick={copyLink}>Copy</button>
-        </div>
-
-        <button className="btn btn-primary btn-full" onClick={onClose}>Done</button>
+        <button className="btn btn-primary w-full" onClick={onClose}>Done</button>
       </div>
-    </div>
+    </Modal>
   )
 }

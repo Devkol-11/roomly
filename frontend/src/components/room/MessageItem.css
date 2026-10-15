@@ -1,86 +1,83 @@
 .msg-row {
   display: flex;
-  align-items: flex-start;
-  gap: 8px;
-  padding: 3px 0;
-  max-width: 680px;
+  align-items: flex-end;
+  gap: 0.65rem;
+  margin-bottom: 0.9rem;
 }
 
 .msg-row.own {
-  flex-direction: row-reverse;
-  align-self: flex-end;
+  justify-content: flex-end;
 }
 
 .msg-avatar {
-  width: 28px;
-  height: 28px;
-  border-radius: 50%;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  color: var(--text-muted);
-  font-size: 12px;
-  font-weight: 600;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  margin-top: 2px;
+  display: grid;
+  width: 2rem;
+  height: 2rem;
+  flex: none;
+  place-items: center;
+  border: 1px solid oklch(70% 0.12 188 / 0.4);
+  border-radius: 5px;
+  background: oklch(70% 0.12 188 / 0.1);
+  color: var(--ks-patina);
+  font-size: 0.78rem;
+  font-weight: 800;
 }
 
 .msg-content {
   display: flex;
+  max-width: min(42rem, 78%);
   flex-direction: column;
-  gap: 2px;
-  max-width: 480px;
+  gap: 0.28rem;
 }
 
-.msg-row.own .msg-content { align-items: flex-end; }
+.msg-row.own .msg-content {
+  align-items: flex-end;
+}
+
+.msg-name,
+.msg-time,
+.msg-original,
+.msg-translated {
+  color: var(--ks-muted);
+  font-size: 0.74rem;
+}
 
 .msg-name {
-  font-size: 12px;
-  font-weight: 500;
-  color: var(--text-muted);
+  font-weight: 700;
 }
 
 .msg-bubble {
-  display: inline-flex;
-  flex-direction: column;
-  gap: 2px;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  border-bottom-left-radius: 2px;
-  padding: 7px 11px;
+  border: 1px solid var(--ks-rule);
+  border-radius: 7px;
+  background: var(--ks-raised-lacquer);
+  padding: 0.78rem 0.9rem;
+  color: var(--ks-text);
+  line-height: 1.6;
 }
 
 .msg-row.own .msg-bubble {
-  background: var(--primary-light);
-  border-color: #bfdbfe;
-  border-bottom-left-radius: var(--radius);
-  border-bottom-right-radius: 2px;
+  border-color: oklch(74% 0.09 82 / 0.5);
+  background: oklch(84% 0.19 80.46 / 0.12);
+  color: var(--ks-champagne);
 }
 
 .msg-text {
-  font-size: 14px;
-  color: var(--text);
-  line-height: 1.45;
+  overflow-wrap: anywhere;
   white-space: pre-wrap;
-  word-break: break-word;
 }
 
 .msg-translated {
-  font-size: 11px;
-  color: var(--primary);
-  font-style: italic;
+  display: block;
+  margin-top: 0.55rem;
+  color: var(--ks-patina);
+  font-family: var(--font-mono);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
 }
 
 .msg-original {
-  font-size: 11px;
-  color: var(--text-light);
+  max-width: 100%;
+  color: var(--ks-faint);
   font-style: italic;
-}
-
-.msg-time {
-  font-size: 11px;
-  color: var(--text-light);
+  overflow-wrap: anywhere;
 }

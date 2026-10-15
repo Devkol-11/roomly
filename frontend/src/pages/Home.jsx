@@ -1,109 +1,152 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { motion, AnimatePresence } from 'motion/react'
 import CreateRoomForm from '../components/home/CreateRoomForm.jsx'
-import JoinRoomInput  from '../components/home/JoinRoomInput.jsx'
-import './Home.css'
+import JoinRoomInput from '../components/home/JoinRoomInput.jsx'
+import { Avatar, Icon, Logo } from '../components/ui.jsx'
+import { saveSession } from '../lib/api.js'
+
+const FEATURES = [
+  { icon: 'clock', title: 'Rooms with a timer', body: 'Pick 15 minutes to 2 hours. When time is up the room and its messages are deleted.' },
+  { icon: 'poll', title: 'Quick polls', body: 'Ask a question, everyone votes, results update live for the whole room.' },
+  { icon: 'mic', title: 'Focus mode', body: 'One person holds the floor at a time. The host can pass it to anyone.' },
+  { icon: 'sparkle', title: 'AI recap and translation', body: 'Get decisions and action items before the room closes. Read messages in your own language.' },
+]
 
 export default function Home() {
   const navigate = useNavigate()
-  const [created, setCreated] = useState(null) // { roomId, creatorId, link, qrCode, expiresAt }
+  const [tab, setTab] = useState('create')
 
   function handleCreated(data) {
-    // Persist the creator session so the room page auto-connects with privileges.
-    localStorage.setItem(`roomly:${data.room_id}`, JSON.stringify({
+    saveSession(data.room_id, {
       displayName: data.displayName,
-      creatorId:   data.creator_id,
-      qrCode:      data.qr_code || null,
-    }))
-    setCreated(data)
-  }
-
-  function enterRoom() {
-    navigate(`/rooms/${created.room_id}`, {
-      state: { displayName: created.displayName, creatorId: created.creator_id },
+      creatorId: data.creator_id,
+      qrCode: data.qr_code || null,
+      link: data.link,
     })
+    navigate(`/rooms/${data.room_id}`, { state: { justCreated: true } })
   }
 
   return (
-    <div className="home-page">
-      <header className="home-hero">
-        <h1 className="home-logo">Roomly</h1>
-        <p className="home-tagline">Ephemeral rooms that self-destruct — no accounts, no history.</p>
+    <div className="min-h-[100dvh] bg-bg">
+      <header className="mx-auto flex h-16 max-w-6xl items-center justify-between px-5">
+        <Logo />
+        <nav className="flex items-center gap-1 text-sm">
+          <a href="#how" className="btn btn-ghost btn-sm hidden sm:inline-flex">How it works</a>
+          <button className="btn btn-secondary btn-sm" onClick={() => setTab('join')}>Join a room</button>
+        </nav>
       </header>
 
-      <main className="home-main">
-        {/* ── Create side ── */}
-        <div className="card">
-          <h2 className="card-heading">Create a room</h2>
-          <p className="card-sub">You get a link, a QR code, and creator privileges.</p>
-          <hr className="divider" />
+      <main>
+        <section className="mx-auto grid max-w-6xl items-center gap-12 px-5 pb-20 pt-10 lg:grid-cols-[1.1fr_0.9fr] lg:pt-20">
+          <div>
+            <span className="chip mb-6"><span className="h-1.5 w-1.5 rounded-full bg-live" />No sign-up. Nothing kept.</span>
+            <h1 className="max-w-xl text-[40px] font-semibold leading-[1.08] tracking-[-0.025em] sm:text-[52px]">
+              Chat rooms that delete themselves when you’re done.
+            </h1>
+            <p className="mt-5 max-w-lg text-[17px] leading-7 text-fg-2">
+              Open a room, share the link, and talk. When the timer runs out the room and its messages are deleted.
+              Good for stand-ups, workshops, and quick group decisions.
+            </p>
 
-          {!created ? (
-            <CreateRoomForm onCreated={handleCreated} />
-          ) : (
-            <CreatedPanel data={created} onEnter={enterRoom} />
-          )}
-        </div>
+            <div className="mt-10 hidden max-w-md lg:block">
+              <PreviewThread />
+            </div>
+          </div>
 
-        {/* ── Join side ── */}
-        <div className="card">
-          <h2 className="card-heading">Join a room</h2>
-          <p className="card-sub">Paste the room ID or a full link.</p>
-          <hr className="divider" />
-          <JoinRoomInput />
-        </div>
+          <div className="card w-full p-2 shadow-pop lg:justify-self-end lg:max-w-[420px]">
+            <div className="grid grid-cols-2 gap-1 rounded-xl bg-surface-2 p-1" role="tablist">
+              {[['create', 'New room'], ['join', 'Join room']].map(([id, label]) => (
+                <button key={id} role="tab" aria-selected={tab === id} onClick={() => setTab(id)}
+                  className={`h-9 rounded-lg text-sm font-medium transition-colors ${
+                    tab === id ? 'bg-surface text-fg shadow-sm ring-1 ring-line' : 'text-fg-2 hover:text-fg'
+                  }`}>
+                  {label}
+                </button>
+              ))}
+            </div>
+            <div className="p-4 pt-5 sm:p-5">
+              <AnimatePresence mode="wait" initial={false}>
+                <motion.div key={tab}
+                  initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -4 }}
+                  transition={{ duration: 0.15 }}>
+                  {tab === 'create' ? <CreateRoomForm onCreated={handleCreated} /> : <JoinRoomInput />}
+                </motion.div>
+              </AnimatePresence>
+            </div>
+          </div>
+        </section>
+
+        <section id="how" className="border-t border-line bg-surface">
+          <div className="mx-auto max-w-6xl px-5 py-16">
+            <h2 className="text-2xl font-semibold tracking-tight">How it works</h2>
+            <ol className="mt-8 grid gap-6 sm:grid-cols-3">
+              {[
+                ['Create', 'Enter your name and pick how long the room should stay open.'],
+                ['Share', 'Send the link or show the QR code. Guests only need to enter a name.'],
+                ['Talk, then it’s gone', 'Chat, run polls, and get an AI recap. When the timer ends the room is deleted.'],
+              ].map(([title, body], i) => (
+                <li key={title} className="flex gap-4">
+                  <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full border border-line-strong font-mono text-xs text-fg-2">{i + 1}</span>
+                  <div>
+                    <h3 className="font-medium">{title}</h3>
+                    <p className="mt-1 text-sm leading-6 text-fg-2">{body}</p>
+                  </div>
+                </li>
+              ))}
+            </ol>
+
+            <div className="mt-14 grid gap-px overflow-hidden rounded-2xl border border-line bg-line sm:grid-cols-2 lg:grid-cols-4">
+              {FEATURES.map(f => (
+                <div key={f.title} className="bg-surface p-6">
+                  <Icon name={f.icon} size={20} className="text-fg-2" />
+                  <h3 className="mt-4 font-medium">{f.title}</h3>
+                  <p className="mt-1.5 text-sm leading-6 text-fg-2">{f.body}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
       </main>
+
+      <footer className="border-t border-line">
+        <div className="mx-auto flex max-w-6xl flex-col gap-2 px-5 py-6 text-[13px] text-fg-3 sm:flex-row sm:items-center sm:justify-between">
+          <span>Roomly. Nothing is saved after a room closes.</span>
+          <span>Built with Go, Redis and React</span>
+        </div>
+      </footer>
     </div>
   )
 }
 
-function CreatedPanel({ data, onEnter }) {
-  const [copiedLink, setCopiedLink] = useState(false)
-  const [copiedId,   setCopiedId]   = useState(false)
-
-  function copy(text, setCopied) {
-    navigator.clipboard.writeText(text).then(() => {
-      setCopied(true)
-      setTimeout(() => setCopied(false), 1800)
-    })
-  }
-
+// A static sample conversation built from the real message styles.
+function PreviewThread() {
   return (
-    <div className="created-panel">
-      <div className="created-check">✓ Room created!</div>
-
-      <div className="field">
-        <span className="label">Join link</span>
-        <div className="copy-row">
-          <span>{data.link}</span>
-          <button className="btn btn-secondary btn-sm" onClick={() => copy(data.link, setCopiedLink)}>
-            {copiedLink ? 'Copied!' : 'Copy'}
-          </button>
-        </div>
+    <div className="card overflow-hidden" aria-hidden="true">
+      <div className="flex items-center justify-between border-b border-line px-4 py-2.5">
+        <span className="font-mono text-xs text-fg-2">rooms/k7Qm2xPa</span>
+        <span className="chip !bg-ember-soft !text-ember"><Icon name="clock" size={12} />24:18</span>
       </div>
-
-      <div className="field">
-        <span className="label">Creator ID — save this to keep your privileges</span>
-        <div className="copy-row">
-          <span>{data.creator_id}</span>
-          <button className="btn btn-secondary btn-sm" onClick={() => copy(data.creator_id, setCopiedId)}>
-            {copiedId ? 'Copied!' : 'Copy'}
-          </button>
-        </div>
-      </div>
-
-      {data.qr_code && (
-        <div className="field">
-          <span className="label">QR code</span>
-          <div className="qr-wrapper">
-            <img src={data.qr_code} alt="Room QR code" className="qr-img" />
+      <div className="space-y-3 p-4 text-sm">
+        <div className="flex gap-2.5">
+          <Avatar name="Maya" size={28} />
+          <div>
+            <div className="text-xs text-fg-3"><span className="font-medium text-fg-2">Maya</span> · 10:02</div>
+            <div className="mt-1 rounded-2xl rounded-tl-md bg-bubble px-3 py-2">Shall we ship on Friday?</div>
           </div>
         </div>
-      )}
-
-      <button className="btn btn-primary btn-full" onClick={onEnter}>
-        Enter room →
-      </button>
+        <div className="flex justify-end">
+          <div className="rounded-2xl rounded-tr-md bg-bubble-own px-3 py-2 text-bubble-own-fg">Friday works. I’ll run a poll.</div>
+        </div>
+        <div className="rounded-xl border border-line p-3">
+          <div className="text-xs font-medium text-fg-3">POLL · 4 votes</div>
+          <div className="mt-1.5 font-medium">Ship on Friday?</div>
+          <div className="relative mt-2 h-8 overflow-hidden rounded-lg bg-surface-2">
+            <div className="absolute inset-y-0 left-0 w-3/4 bg-surface-3" />
+            <span className="relative flex h-full items-center justify-between px-3 text-[13px]"><span>Yes</span><span>75%</span></span>
+          </div>
+        </div>
+      </div>
     </div>
   )
 }

@@ -1,108 +1,67 @@
 import { useState } from 'react'
+import { api } from '../../lib/api.js'
+import { FormError } from '../ui.jsx'
 
-const API = import.meta.env.VITE_API_URL || 'http://localhost:8080'
-const DURATIONS = [15, 30, 60, 120]
+const DURATIONS = [
+  { value: 15, label: '15 min' },
+  { value: 30, label: '30 min' },
+  { value: 60, label: '1 hour' },
+  { value: 120, label: '2 hours' },
+]
 
 export default function CreateRoomForm({ onCreated }) {
   const [displayName, setDisplayName] = useState('')
-  const [duration, setDuration]       = useState(60)
-  const [loading, setLoading]         = useState(false)
-  const [error, setError]             = useState('')
+  const [duration, setDuration] = useState(60)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
 
   async function handleSubmit(e) {
     e.preventDefault()
-    if (displayName.trim().length < 2) {
-      setError('Name must be at least 2 characters.')
-      return
-    }
+    const name = displayName.trim()
+    if (name.length < 2) return setError('Your name needs at least 2 characters.')
     setError('')
     setLoading(true)
     try {
-      const res = await fetch(`${API}/api/rooms`, {
-        method:  'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ display_name: displayName.trim(), duration_minutes: duration }),
+      const data = await api('/api/rooms', {
+        method: 'POST',
+        body: JSON.stringify({ display_name: name, duration_minutes: duration }),
       })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error || 'Failed to create room')
-      onCreated({ ...data, displayName: displayName.trim() })
+      onCreated({ ...data, displayName: name })
     } catch (err) {
-      setError(err.message)
-    } finally {
+      setError(err.status ? err.message : 'Could not reach the Roomly server. Is the backend running?')
       setLoading(false)
     }
   }
 
   return (
-    <form onSubmit={handleSubmit}>
-      <div className="field">
+    <form onSubmit={handleSubmit} className="space-y-5">
+      <div>
         <label className="label" htmlFor="cr-name">Your name</label>
-        <input
-          id="cr-name"
-          className="input"
-          placeholder="e.g. Alice"
-          value={displayName}
-          onChange={e => setDisplayName(e.target.value)}
-          maxLength={20}
-          required
-        />
+        <input id="cr-name" className="input" placeholder="e.g. Ada" autoComplete="nickname"
+          value={displayName} onChange={e => setDisplayName(e.target.value)} maxLength={20} autoFocus />
       </div>
 
-      <div className="field">
-        <span className="label">Room duration</span>
-        <div className="duration-grid">
+      <fieldset>
+        <legend className="label">Room closes after</legend>
+        <div className="grid grid-cols-4 gap-1 rounded-xl bg-surface-2 p-1">
           {DURATIONS.map(d => (
-            <label key={d} className={`duration-opt${duration === d ? ' active' : ''}`}>
-              <input
-                type="radio"
-                name="duration"
-                value={d}
-                checked={duration === d}
-                onChange={() => setDuration(d)}
-              />
-              {d < 60 ? `${d} min` : `${d / 60}h`}
+            <label key={d.value}
+              className={`flex h-9 cursor-pointer items-center justify-center rounded-lg text-[13px] font-medium transition-colors ${
+                duration === d.value ? 'bg-surface text-fg shadow-sm ring-1 ring-line' : 'text-fg-2 hover:text-fg'
+              }`}>
+              <input type="radio" name="duration" value={d.value} checked={duration === d.value}
+                onChange={() => setDuration(d.value)} className="sr-only" />
+              {d.label}
             </label>
           ))}
         </div>
-      </div>
+      </fieldset>
 
-      {error && <p className="form-error">{error}</p>}
+      <FormError>{error}</FormError>
 
-      <button className="btn btn-primary btn-full" type="submit" disabled={loading}>
-        {loading ? 'Creating…' : 'Create room'}
+      <button className="btn btn-primary btn-lg w-full" type="submit" disabled={loading}>
+        {loading ? 'Creating room…' : 'Create room'}
       </button>
-
-      <style>{`
-        .duration-grid {
-          display: grid;
-          grid-template-columns: repeat(4, 1fr);
-          gap: 8px;
-        }
-        .duration-opt {
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          padding: 7px 4px;
-          border: 1px solid var(--border);
-          border-radius: var(--radius-sm);
-          font-size: 13px;
-          font-weight: 500;
-          cursor: pointer;
-          color: var(--text-muted);
-          transition: border-color 0.15s, color 0.15s, background 0.15s;
-        }
-        .duration-opt input { display: none; }
-        .duration-opt.active {
-          border-color: var(--primary);
-          color: var(--primary);
-          background: var(--primary-light);
-        }
-        .form-error {
-          font-size: 13px;
-          color: var(--red);
-          margin-bottom: 12px;
-        }
-      `}</style>
     </form>
   )
 }
