@@ -1,5 +1,7 @@
 # Roomly
 
+> **Architecture docs:** [Architecture](docs/ARCHITECTURE.md) · [Real-time / WebSockets](docs/REALTIME.md) · [Request flows](docs/FLOWS.md)
+
 Ephemeral real-time rooms — no accounts, no persistence. Create a room, share the link, collaborate, it self-destructs.
 
 ## Stack
@@ -104,9 +106,11 @@ cd frontend && npm install && npm run dev
 ```
 ws://localhost:8080/ws/rooms/:id
   ?display_name=Alice
-  &participant_id=<creator_id>   # optional — grants creator privileges
+  &participant_id=<creator_id>   # optional — the host key; grants creator privileges
   &lang=French                   # optional — preferred language for live translation
 ```
+
+Every connection gets a fresh random public participant ID (returned in `room_state.self_id`). The host key is never broadcast to other participants.
 
 `lang` accepts BCP-47 tags (`en`, `es`, `fr`) or plain names (`French`, `Spanish`).
 
@@ -121,6 +125,7 @@ ws://localhost:8080/ws/rooms/:id
 | `user_left` | server→client | Participant left |
 | `typing_started` | both | Typing indicator on |
 | `typing_stopped` | both | Typing indicator off |
+| `room_state` | server→client | Sent once to a new connection: `self_id`, `is_creator`, current `participants`, `focus`, `polls`, `ai_enabled` |
 | `error` | server→client | Operation rejected with a reason |
 
 ### Room control (creator only)
