@@ -29,10 +29,10 @@ func NewHandler(redisClient *redis.Client, manager *realtime.Manager) *Handler {
 }
 
 func (h *Handler) ServeWS(c *gin.Context) {
-	roomID        := c.Param("id")
-	displayName   := c.Query("display_name")
+	roomID := c.Param("id")
+	displayName := c.Query("display_name")
 	participantID := c.Query("participant_id")
-	language      := c.Query("lang")
+	language := c.Query("lang")
 
 	if len(displayName) < 2 || len(displayName) > 20 {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "display_name must be 2-20 characters"})
@@ -40,7 +40,9 @@ func (h *Handler) ServeWS(c *gin.Context) {
 	}
 
 	ctx := context.Background()
+
 	r, err := store.GetRoom(ctx, h.redis, roomID)
+
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not fetch room"})
 		return
@@ -55,13 +57,17 @@ func (h *Handler) ServeWS(c *gin.Context) {
 	}
 
 	conn, err := upgrader.Upgrade(c.Writer, c.Request, nil)
+
 	if err != nil {
 		log.Printf("WebSocket upgrade error: %v", err)
 		return
 	}
 
-	hub := h.manager.GetOrCreateHub(roomID, r.CreatorID)
-	client, err := realtime.NewClient(displayName, roomID, participantID, language, hub, conn)
+	hub := h.manager.GetOrCreateHub(roomID)
+	isCreator := participantID != "" && participantID == r.CreatorID
+
+	client, err := realtime.NewClient(displayName, roomID, language, isCreator, hub, conn)
+
 	if err != nil {
 		conn.Close()
 		return

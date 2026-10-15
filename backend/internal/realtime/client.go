@@ -21,25 +21,26 @@ type Client struct {
 	DisplayName string
 	RoomID      string
 	Language    string
+	IsCreator   bool
 	hub         *Hub
 	conn        *websocket.Conn
 	send        chan []byte
 }
 
-func NewClient(displayName, roomID, participantID, language string, hub *Hub, conn *websocket.Conn) (*Client, error) {
-	id := participantID
-	if id == "" {
-		var err error
-		id, err = generateClientID()
-		if err != nil {
-			return nil, err
-		}
+// NewClient creates a connection-scoped participant. The public ID is always
+// random: the creator's secret key is never used as an ID because IDs are
+// broadcast to everyone in the room (user_joined, sender_id, ...).
+func NewClient(displayName, roomID, language string, isCreator bool, hub *Hub, conn *websocket.Conn) (*Client, error) {
+	id, err := generateClientID()
+	if err != nil {
+		return nil, err
 	}
 	return &Client{
 		ID:          id,
 		DisplayName: displayName,
 		RoomID:      roomID,
 		Language:    language,
+		IsCreator:   isCreator,
 		hub:         hub,
 		conn:        conn,
 		send:        make(chan []byte, 256),
@@ -60,7 +61,7 @@ func generateClientID() (string, error) {
 
 func (c *Client) ReadLoop() {
 	defer func() {
-		c.hub.unregister <- c
+		c.hub.Unregister(c)
 		c.conn.Close()
 	}()
 	c.conn.SetReadLimit(maxMessageSize)
@@ -167,11 +168,11 @@ func (c *Client) handleChat(payload json.RawMessage) {
 	}
 	msgID, _ := generateClientID()
 	msg := MessagePayload{
-		ID:        msgID[:8],
-		SenderID:  c.ID,
+		ID:         msgID[:8],
+		SenderID:   c.ID,
 		SenderName: c.DisplayName,
-		Text:      body.Text,
-		Timestamp: time.Now(),
+		Text:       body.Text,
+		Timestamp:  time.Now(),
 	}
 	c.hub.broadcastMessage(c, msg)
 }
@@ -208,13 +209,17 @@ func (c *Client) handlePollCreate(payload json.RawMessage) {
 		c.sendError("could not create poll")
 		return
 	}
-	c.hub.broadcast <- mustEvent(EventPollCreate, poll)
+	c.hub.Notify(mustEvent(EventPollCreate, poll))
 }
 
 func (c *Client) handlePollVote(payload json.RawMessage) {
 	var body PollVotePayload
 	if err := json.Unmarshal(payload, &body); err != nil || body.PollID == "" {
 		c.sendError("invalid vote payload")
+		return
+	}
+	if !c.hub.ValidPollOption(body.PollID, body.OptionIndex) {
+		c.sendError("invalid poll option")
 		return
 	}
 	voted, err := c.hub.RecordVote(body.PollID, c.ID, body.OptionIndex)
@@ -231,13 +236,13 @@ func (c *Client) handlePollVote(payload json.RawMessage) {
 		c.sendError("could not get poll results")
 		return
 	}
-	c.hub.broadcast <- mustEvent(EventPollUpdate, PollUpdatePayload{
+	c.hub.Notify(mustEvent(EventPollUpdate, PollUpdatePayload{
 		PollID: body.PollID, Votes: results,
-	})
+	}))
 }
 
 func (c *Client) handleLockRoom() {
-	if err := c.hub.LockRoomWS(c.ID); err != nil {
+	if err := c.hub.LockRoomWS(c); err != nil {
 		c.sendError(err.Error())
 	}
 }
@@ -250,26 +255,27 @@ func (c *Client) handleKickMember(payload json.RawMessage) {
 		c.sendError("participant_id is required")
 		return
 	}
-	if err := c.hub.KickClient(c.ID, body.ParticipantID); err != nil {
+	if err := c.hub.KickClient(c, body.ParticipantID); err != nil {
 		c.sendError(err.Error())
 	}
 }
 
-func (c *Client) handleFocusModeOn()  { c.maybeError(c.hub.EnableFocusMode(c.ID, c.DisplayName)) }
-func (c *Client) handleFocusModeOff() { c.maybeError(c.hub.DisableFocusMode(c.ID)) }
-func (c *Client) handleFloorRequest() { c.maybeError(c.hub.RequestFloor(c)) }
-func (c *Client) handleFloorRelease() { c.maybeError(c.hub.ReleaseFloor(c.ID, c.DisplayName)) }
-func (c *Client) handleSummaryRequest() { c.maybeError(c.hub.RequestSummary(c.ID)) }
+func (c *Client) handleFocusModeOn()    { c.maybeError(c.hub.EnableFocusMode(c)) }
+func (c *Client) handleFocusModeOff()   { c.maybeError(c.hub.DisableFocusMode(c)) }
+func (c *Client) handleFloorRequest()   { c.maybeError(c.hub.RequestFloor(c)) }
+func (c *Client) handleFloorRelease()   { c.maybeError(c.hub.ReleaseFloor(c.ID, c.DisplayName)) }
+func (c *Client) handleSummaryRequest() { c.maybeError(c.hub.RequestSummary(c)) }
 
 func (c *Client) handleGrantFloor(payload json.RawMessage) {
 	var body struct {
 		ParticipantID string `json:"participant_id"`
 	}
+
 	if err := json.Unmarshal(payload, &body); err != nil || body.ParticipantID == "" {
 		c.sendError("participant_id is required")
 		return
 	}
-	c.maybeError(c.hub.GrantFloor(c.ID, body.ParticipantID))
+	c.maybeError(c.hub.GrantFloor(c, body.ParticipantID))
 }
 
 func (c *Client) maybeError(err error) {

@@ -51,19 +51,24 @@ func (c *Client) complete(ctx context.Context, model, prompt string) (string, er
 		Model:    model,
 		Messages: []message{{Role: "user", Content: prompt}},
 	}
+
 	body, _ := json.Marshal(req)
 
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, mistralAPI, bytes.NewReader(body))
+
 	if err != nil {
 		return "", err
 	}
+
 	httpReq.Header.Set("Authorization", "Bearer "+c.apiKey)
 	httpReq.Header.Set("Content-Type", "application/json")
 
 	resp, err := c.httpClient.Do(httpReq)
+	
 	if err != nil {
 		return "", err
 	}
+	
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
@@ -133,6 +138,7 @@ If there are no decisions or action items, use empty arrays. The sentiment must 
 	content = extractJSON(content)
 
 	var summary Summary
+	
 	if err := json.Unmarshal([]byte(content), &summary); err != nil {
 		return nil, fmt.Errorf("could not parse summary JSON: %w", err)
 	}

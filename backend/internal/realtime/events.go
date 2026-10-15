@@ -24,6 +24,9 @@ const (
 	EventFloorGranted      = "floor_granted"
 	EventFloorReleased     = "floor_released"
 
+	// Sent only to the connecting client with a snapshot of the room.
+	EventRoomState = "room_state"
+
 	// AI summary
 	EventRoomSummary = "room_summary"
 )
@@ -48,6 +51,18 @@ type MessagePayload struct {
 type UserPayload struct {
 	ParticipantID string `json:"participant_id"`
 	DisplayName   string `json:"display_name"`
+	IsCreator     bool   `json:"is_creator"`
+}
+
+// RoomStatePayload is the snapshot a client receives right after joining so
+// late joiners see who is already present and the current focus state.
+type RoomStatePayload struct {
+	SelfID       string           `json:"self_id"`
+	IsCreator    bool             `json:"is_creator"`
+	Participants []UserPayload    `json:"participants"`
+	Focus        FocusModePayload `json:"focus"`
+	Polls        []*Poll          `json:"polls"`
+	AIEnabled    bool             `json:"ai_enabled"`
 }
 
 type TypingPayload struct {

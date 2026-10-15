@@ -29,7 +29,6 @@ func main() {
 	mistralKey  := getEnv("MISTRAL_API_KEY", "")
 
 	redisClient := store.NewClient(redisAddr)
-
 	aiClient := ai.NewClient(mistralKey)
 	
 	if aiClient.Enabled() {
@@ -41,9 +40,11 @@ func main() {
 	manager := realtime.NewManager(redisClient, aiClient)
 
 	router := gin.Default()
+	
 	api.RegisterRoutes(router, redisClient, manager, frontendURL)
 
 	srv := &http.Server{Addr: port, Handler: router}
+	
 	go func() {
 		log.Printf("Roomly running on %s", port)
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {

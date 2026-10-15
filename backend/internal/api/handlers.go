@@ -70,12 +70,14 @@ func (h *Handler) CreateRoom(c *gin.Context) {
 		return
 	}
 	creatorID, err := generateID(16)
+
 	if err != nil {
 		respondError(c, http.StatusInternalServerError, "could not generate participant ID")
 		return
 	}
 
 	now := time.Now()
+
 	r := &models.Room{
 		ID:        roomID,
 		Status:    "active",
@@ -116,13 +118,14 @@ func (h *Handler) GetRoom(c *gin.Context) {
 		respondError(c, http.StatusNotFound, "room not found or has expired")
 		return
 	}
+	count, _ := h.redis.SCard(context.Background(), "room:"+roomID+":participants").Result()
 	respondOK(c, gin.H{
 		"id":                r.ID,
 		"status":            r.Status,
 		"created_at":        r.CreatedAt.Format(time.RFC3339),
 		"expires_at":        r.ExpiresAt.Format(time.RFC3339),
 		"locked":            r.Status == "locked",
-		"participant_count": 0,
+		"participant_count": count,
 	})
 }
 
